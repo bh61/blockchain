@@ -53,7 +53,7 @@ try {
     console.log('--- 消息结构：', JSON.stringify(sendBlockchainMsg));
 
     // 测试6：消息类型完整性检查
-    console.log('6. 测试消息类型完整性检查');
+    console.log('6. 测试消息类型完整性检查'); 
     const allMessageTypes = Object.keys(messageType);
     console.log('--- 定义的消息类型数量：', allMessageTypes.length);
     console.log('--- 消息类型列表：', allMessageTypes.join(','));
