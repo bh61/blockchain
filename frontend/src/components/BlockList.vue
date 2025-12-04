@@ -1,50 +1,85 @@
 <template>
-  <div class="blockchain-container">
-    <div class="header">
-      <h1>Blockchain Visualization</h1>
-      <div class="header-right">
-        <div class="node-info">
-          <span class="label">当前节点:</span>
-          <span class="current-node">P2P未知</span>
+    <div class="blockchain-container">
+        <div class="header">
+            <h1>Blockchain Visualization</h1>
+            <div class="header-right">
+                <div class="node-info">
+                    <span class="label">当前节点:</span>
+                    <span class="current-node">P2P未知</span>
+                </div>
+                <div class="status">
+                    <span :class="['status-dot', connect ? 'online' : 'offline']"></span>
+                    {{ connect ? '已连接' : '未连接'}}
+                </div>
+            </div>
         </div>
-        <div class="status">
-          <span :class="['status-dot', connect ? 'online' : 'offline']"></span>
-          {{ connect ? '已连接' : '未连接'}}
+
+        <div class="node-selector-bar">
+            <div class="selector-left">
+                <span class="label">可用节点：</span>
+                <button
+                    v-for="node in availableNodes"
+                    :key="node.airPort"
+                    @click="switchToNode(node)"
+                    :class="['node-btn', { active: currentApiPort === node.airPort }]"
+                    :title="`api端口：${node.airPort}，区块数：${node.blockCount}`"
+                    >
+                    <div class="node-id">节点：</div>
+                    <div class="node-blocks">区块<</div>
+                </button>
+                <div v-if="availableNodes.length === 0 && !isDiscovering" class="no-nodes">未发现节点</div>
+                <div v-if="isDiscovering" class="discovering">扫描中……</div>
+            </div>
+            <button @click="discoverNodes" class="refresh-nodes-btn" :disabled="isDiscovering">刷新节点</button>
         </div>
-      </div>
-    </div>
 
-    <div class="node-selector-bar">
-      <div class="selector-left">
-        <span class="label">可用节点：</span>
-        <button
-          v-for="node in availableNodes"
-          :key="node.airPort"
-          @click="switchToNode(node)"
-          :class="['node-btn', { active: currentApiPort === node.airPort }]"
-          :title="`api端口：${node.airPort}，区块数：${node.blockCount}`"
-        >
-          <div class="node-id">节点：</div>
-          <div class="node-blocks">区块</div>
-        </button>
-        <div v-if="availableNodes.length === 0 && !isDiscovering" class="no-nodes">未发现节点</div>
-        <div v-if="isDiscovering" class="discovering">扫描中……</div>
-      </div>
-      <button @click="discoverNodes" class="refresh-nodes-btn" :disabled="isDiscovering">刷新节点</button>
-    </div>
+        <div class="controls">
+            <button @click="fetchBlocks" class="refresh-btn">
+                Refresh Chain
+            </button>
+            <div class="auto-refresh">
+                <label>
+                    <input type="checkbox" v-model="autoRefresh"></input>
+                    Auto Refresh(2s)
+                </label>
+            </div>
+        </div>
 
-    <div class="controls">    
-      <button @click="fetchBlocks" class="refresh-btn">
-        Refresh Chain
-      </button>
-      <div class="auto-refresh">
-        <label>
-          <input type="checkbox" v-model="autoRefresh" />
-          Auto Refresh(2s)
-        </label>
-      </div>
+        <div class="chain-display" v-if="blocks.length > 0">
+            <div v-for="(block, index) in blocks" :key="block.index" class="block-wrapper">
+                <div class="block-card">
+                    <div class="block-header">
+                        <span class="block-index">#{{ block.index }}</span>
+                        <span class="block-time">{{ block.timestamp }}</span>
+                    </div>
+                <div class="block-body">
+                    <div class="data-row">
+                        <span class="label">Hash:</span>
+                        <span class="value hash" :title="block.hash">{{ block.hash }}</span>
+                </div>
+                <div class="data-row">
+                    <span class="label">Prev Hash:</span>
+                    <span class="value hash">{{ block.previousHash }}</span>
+                </div>
+                <div class="data-row">
+                    <span class="label">Data:</span>
+                    <span class="value data-content">{{ block.data }}</span>
+                </div>
+                <div class="data-row">
+                    <span class="label">Nonce:</span>
+                    <span class="value">{{ block.nonce }}</span>
+                </div>
+            </div>
+        </div>
+        <div v-if="index < blocks.length - 1" class="chain-link">
+            <div class="arrow"></div>
+        </div>
     </div>
-  </div>
+</div>
+        <div v-else class="empty-state">
+            Waiting for blockchain data...
+        </div>
+    </div>
 </template>
 
 <script setup> 
@@ -52,10 +87,46 @@ import { ref } from 'vue';
 const connect = ref(false);
 const availableNodes = ref([]);
 const currentApiPort = ref(3001);
-const blocks = ref([]);
+const blocks = ref([
+
+{
+        index: 0,
+        previousHash: "0",
+        timestamp: 1508270000000,
+        data: "first block",
+        hash: "000dc75a315c77a1f9c98fb6247d03dd18ac52632d7dc6a9920261d8109b37cf",
+        nonce: 604
+    },
+    {
+        index: 1,
+        previousHash: "000dc75a315c77a1f9c98fb6247d03dd18ac52632d7dc6a9920261d8109b37cf",
+        timestamp: 1733244720000,
+        data: "Hello Blockchain!",
+        hash: "000a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a",
+        nonce: 1234
+    },
+    {
+        index: 2,
+        previousHash: "000a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a",
+        timestamp: 1733244820000,
+        data: "Second block data",
+        hash: "000b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b",
+        nonce: 5678
+    },
+    {
+        index: 3,
+        previousHash: "000b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b",
+        timestamp: 1733244920000,
+        data: "Transaction data: Alice -> Bob: 100 BTC",
+        hash: "000c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c",
+        nonce: 9012
+    }
+]);
+
 const autoRefresh = ref(true);
 const isDiscovering = ref(false);
 let timer = null;
+
 </script>
 
 <style scoped>
@@ -214,6 +285,7 @@ h1 {
     opacity: 0.5;
     cursor: not-allowed;
 }
+
 .controls {
   margin-bottom: 30px;
   display: flex;
@@ -235,5 +307,103 @@ h1 {
   background-color: #2980b9;
 }
 
+.chain-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
 
+.block-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+/* 点击代码行，Alt+O 打开对 */
+.block-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 600px;
+  overflow: hidden;
+  transform: transform 0.3s;
+  border: 1px solid #3f3f3f;
+}
+
+.block-card:hover {
+  transform: translate(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+}
+
+.block-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #f1f1f1;
+  padding: 12px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.block-index {
+  font-weight: bold;
+  font-size: 18px;
+}
+
+.block-time {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.block-body {
+  padding: 20px;
+}
+
+.data-row {
+  display: flex;
+  margin-bottom: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.data-row:last-child {
+  margin-bottom: 0;
+}
+
+.label {
+  width: 100px;
+  color: #888;
+  flex-shrink: 0;
+}
+
+.value {
+  color: #333;
+  word-break: break-all;
+}
+
+.data-content {
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+.hash {
+  color: #e67e22;
+}
+
+.chain-link {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ccc;
+  font-size: 24px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px;
+  color: #999;
+  font-style: italic;
+}
 </style>
