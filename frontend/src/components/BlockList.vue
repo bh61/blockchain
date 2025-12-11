@@ -5,11 +5,11 @@
             <div class="header-right">
                 <div class="node-info">
                     <span class="label">当前节点:</span>
-                    <span class="current-node">P2P未知</span>
+                    <span class="current-node">P2P {{ getCurrentNodeP2pPort() }}</span>
                 </div>
                 <div class="status">
-                    <span :class="['status-dot', connect ? 'online' : 'offline']"></span>
-                    {{ connect ? '已连接' : '未连接'}}
+                    <span :class="['status-dot', connected ? 'online' : 'offline']"></span>
+                    {{ connected ? '已连接' : '未连接'}}
                 </div>
             </div>
         </div>
@@ -19,15 +19,17 @@
                 <span class="label">可用节点：</span>
                 <button
                     v-for="node in availableNodes"
-                    :key="node.airPort"
+                    :key="node.apiPort"
                     @click="switchToNode(node)"
-                    :class="['node-btn', { active: currentApiPort === node.airPort }]"
-                    :title="`api端口：${node.airPort}，区块数：${node.blockCount}`"
+                    :class="['node-btn', { active: currentApiPort === node.apiPort }]"
+                    :title="`API端口: ${node.apiPort}，区块数：${node.blockCount}`"
                     >
-                    <div class="node-id">节点：</div>
-                    <div class="node-blocks">区块<</div>
+                    <div class="node-id">节点 {{ node.p2pPort }}</div>
+                    <div class="node-blocks">{{ node.blockCount }} 区块</div>
                 </button>
-                <div v-if="availableNodes.length === 0 && !isDiscovering" class="no-nodes">未发现节点</div>
+                <div v-if="availableNodes.length === 0 && !isDiscovering" class="no-nodes">
+                  未发现节点
+                </div>
                 <div v-if="isDiscovering" class="discovering">扫描中……</div>
             </div>
             <button @click="discoverNodes" class="refresh-nodes-btn" :disabled="isDiscovering">刷新节点</button>
@@ -50,7 +52,7 @@
                 <div class="block-card">
                     <div class="block-header">
                         <span class="block-index">#{{ block.index }}</span>
-                        <span class="block-time">{{ block.timestamp }}</span>
+                        <span class="block-time">{{formatTime(block.timestamp) }}</span>
                     </div>
                 <div class="block-body">
                     <div class="data-row">
@@ -83,49 +85,114 @@
 </template>
 
 <script setup> 
-import { ref } from 'vue';
-const connect = ref(false);
-const availableNodes = ref([]);
-const currentApiPort = ref(3001);
-const blocks = ref([
+import { ref, onMounted, onUnmounted, watch } from 'vue';
+import axios from 'axios';
+import dayjs from 'dayjs';
 
-{
-        index: 0,
-        previousHash: "0",
-        timestamp: 1508270000000,
-        data: "first block",
-        hash: "000dc75a315c77a1f9c98fb6247d03dd18ac52632d7dc6a9920261d8109b37cf",
-        nonce: 604
-    },
-    {
-        index: 1,
-        previousHash: "000dc75a315c77a1f9c98fb6247d03dd18ac52632d7dc6a9920261d8109b37cf",
-        timestamp: 1733244720000,
-        data: "Hello Blockchain!",
-        hash: "000a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a",
-        nonce: 1234
-    },
-    {
-        index: 2,
-        previousHash: "000a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a",
-        timestamp: 1733244820000,
-        data: "Second block data",
-        hash: "000b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b",
-        nonce: 5678
-    },
-    {
-        index: 3,
-        previousHash: "000b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b",
-        timestamp: 1733244920000,
-        data: "Transaction data: Alice -> Bob: 100 BTC",
-        hash: "000c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c",
-        nonce: 9012
-    }
-]);
-
+const availableNodes = ref([]); // 可用的节点列表
+const currentApiPort = ref(3001); // 当前连接的API端口
+const blocks = ref([]);
+const connected = ref(false);
 const autoRefresh = ref(true);
 const isDiscovering = ref(false);
 let timer = null;
+
+
+// 扫描指定端口，检查是否有节点在运行
+const scanPort = async (port) => {
+  try {
+    const response = await axios.get(`http://localhost:${port}/nodeinfo`, { timeout: 1000 });
+    return {
+      port,
+      apiPort: port,
+      p2pPort: response.data.p2pPort,
+      blockCount: response.data.blockCount,
+      online: true
+    };
+  } catch (error) {
+    return null;
+  }
+};
+
+
+// 发现网络中的所有节点
+const discoverNodes = async () => {
+  isDiscovering.value = true;
+  const portRange = [3001, 3002, 3003, 3004, 3005]; // 扫描的端口范围
+  const promises = portRange.map(port => scanPort(port));
+  const results = await Promise.all(promises);
+
+  // 过滤掉null值（不可用的端口）
+  availableNodes.value = results.filter(node => node !== null);
+  isDiscovering.value = false;
+
+  console.log('发现的节点：', availableNodes.value);
+};
+
+
+// 获取区块链数据
+const fetchBlocks = async () => {
+  try {
+    const response = await axios.get(`http://localhost:${currentApiPort.value}/blocks`);
+    blocks.value = response.data;
+    connected.value = true;
+  } catch (error) {
+    console.error('Error fetching blocks:', error);
+    connected.value = false;
+  }
+};
+
+// 切换到指定节点
+const switchToNode = (node) => {
+  currentApiPort.value = node.apiPort;
+  fetchBlocks();
+};
+
+
+// 获取当前节点的p2p端口（用于显示）
+const getCurrentNodeP2pPort = () => {
+  const currentNode = availableNodes.value.find(n => n.apiPort === currentApiPort.value);
+  return currentNode?.p2pPort || '未知';
+};
+
+
+const formatTime = (timestamp) => {
+  return dayjs(timestamp * 1000).format('YYYY-MM-DD HH:mm:ss');
+};
+
+
+const startPolling = () => {
+  if (timer) clearInterval(timer);
+  timer = setInterval(fetchBlocks, 2000);
+};
+
+
+const stopPolling = () => {
+  if (timer) clearInterval(timer);
+};
+
+
+watch(autoRefresh, (newValue) => {
+  if (newValue) {
+    startPolling();
+  } else {
+    stopPolling();
+  }
+});
+
+
+onMounted(async () => { // 先发现可用节点
+  await discoverNodes();
+  fetchBlocks(); // 然后获取区块数据
+  if (autoRefresh.value) {
+    startPolling();
+  }
+});
+
+
+onUnmounted(() => {
+  stopPolling();
+});
 
 </script>
 
